@@ -56,13 +56,13 @@
   [^com.sun.mail.imap.IMAPStore store folder]
   (let [s (.getDefaultFolder store)
         inbox (.getFolder s folder)
-        folder (doto inbox (.open Folder/READ_ONLY))]
+        folder (doto inbox (.open Folder/READ_WRITE))]
     (.getMessages folder)))
 
-(defn recent-mail [store & params]
+(defn recent-mail 
   "Just show the last 10 messages from our inbox"
-  (let [limit (or (first params) 10)]
-    (->> (all-messages store "INBOX")
+  [store & params] (let [limit (or (first params) 10)]
+    (->> (all-messages store (:inbox folder-names))
           reverse
           (take 5))))
 
@@ -139,10 +139,35 @@
          (doall (map #(.setFlags % (Flags. Flags$Flag/SEEN) true) messages))
         nil)))
 
-  (defn dump
+(defn dump
   "Handy function that dumps out a batch of emails to disk"
   [dir msgs]
   (doseq [msg msgs]
     (.writeTo msg (java.io.FileOutputStream.
       (format "%s%s" dir (str (msg/message-id msg)))))))
 
+(defmacro with-editable-message
+  "Render an IMAP message as editable" ;; In order to edit a message, we have to copy it, alter it, append to the folder, and delete the original
+  [store folder-name orig-message & body]
+  `(let [~'folder (doto (.getFolder ~store ~folder-name) (.open Folder/READ_WRITE))
+         ~'message (msg/copy ~orig-message)]
+     ~@body
+     (.saveChanges ~'message)
+     (.appendMessages ~'folder (into-array javax.mail.Message [~'message]))
+     (.setFlag ~orig-message javax.mail.Flags$Flag/DELETED true)
+     (.expunge ~'folder)
+     ~'message))
+
+(defn add-subject-prefix
+  "Add a prefix to the subject of a message"
+  [store folder-name msg prefix]
+   (with-editable-message store folder-name msg
+    (let [oldsbj (.getSubject message)]
+      (doto message (.setSubject (str prefix oldsbj))))))
+
+(defn flag-message
+  "Flag a message"
+  [store folder-name msg]
+  (with-editable-message store folder-name msg
+    (.setFlag message javax.mail.Flags$Flag/FLAGGED true)))
+    

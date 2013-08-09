@@ -107,6 +107,11 @@
         (map #(hash-map (.getContentType %) (.getContent %)) parts))
       (list (hash-map (content-type msg) (.getContent msg))))))
 
+(defn copy
+  "Copy a message into a new message suitable for editing"
+  [^javax.mail.Message msg]
+  (javax.mail.internet.MimeMessage. msg))
+
 ;; Public API for working with messages
 
 (defn read-message [msg]
